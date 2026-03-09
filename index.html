@@ -66,6 +66,16 @@ hr{border:none;border-top:1px solid var(--border);margin:1.1rem 0}
 .demo-box span { display:inline-block; margin-right:1rem; margin-bottom:.5rem; }
 .edit-list-item { display:flex; gap:.5rem; margin-bottom:.5rem; }
 .top-score-text { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; text-align: center; }
+
+/* Madde İstatistik Kutusu Stilleri */
+.item-stats-box { margin-top: 1.2rem; padding: 1.2rem; background: var(--paper); border: 1px solid var(--border); border-radius: 12px; }
+.item-stats-title { font-weight: 600; font-size: .95rem; color: var(--ink); margin-bottom: .8rem; }
+.item-stat-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: .6rem; font-size: .85rem; padding-bottom: .6rem; border-bottom: 1px dashed #e0d8c8; }
+.item-stat-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.item-stat-text { flex: 1; color: var(--ink); font-weight: 500; }
+.item-stat-votes { white-space: nowrap; font-weight: 600; }
+.item-summary-box { margin-top: 1rem; padding: .8rem; background: #fff; border-radius: 8px; border: 1px solid var(--border); font-size: .85rem; }
+.item-summary-row { margin-bottom: .3rem; }
 </style>
 </head>
 <body>
@@ -198,6 +208,8 @@ hr{border:none;border-top:1px solid var(--border);margin:1.1rem 0}
         <div class="stat-box"><div class="stat-label">Std. Sapma</div><div class="stat-value" id="rStd2" style="font-size:1.2rem; line-height:1.6">—</div></div>
       </div>
       <div class="top-score-text" id="rTop3_2"></div>
+      
+      <div id="rItemStats"></div>
 
       <div style="margin:1.5rem 0 .5rem; font-weight:bold; font-size:.85rem; color:var(--muted)">BİREYSEL DEĞERLENDİRMELER (<span id="rCount">0</span> Kişi)</div>
       <div id="rList"></div>
@@ -250,6 +262,8 @@ hr{border:none;border-top:1px solid var(--border);margin:1.1rem 0}
       </div>
       <div class="top-score-text" id="hdTop3_2"></div>
 
+      <div id="hdItemStats"></div>
+
       <div id="hdList" style="margin-top:1.5rem"></div>
       <hr>
       <button class="btn btn-success" onclick="downloadSingleReportCSV(true)">📥 Bu Oturumu Excel Olarak İndir (CSV)</button>
@@ -261,8 +275,8 @@ hr{border:none;border-top:1px solid var(--border);margin:1.1rem 0}
 
 <script>
 // ==========================================
-// API LİNKİNİZ (TÜRKÇE VERSİYON İÇİN YENİ BAĞLANTI)
-const API = "https://script.google.com/macros/s/AKfycbwOGCgLhJioG0mn1gOcbO6EEs3UOVmquzBbc9Es5EcFEFuWbTv4gwCmv-pYLe8fuFAC/exec";
+// YENİ OLUŞTURDUĞUNUZ API LİNKİNİ AŞAĞIYA YAPIŞTIRIN:
+const API = "https://script.google.com/macros/s/AKfycbzaEq__vTMdRblYkNcMUhJp4o_geKha5VmL37UheZ2NaJ02Atf_iKnCwLFUtM_-wZxF/exec";
 // ==========================================
 
 let myScorerData = JSON.parse(localStorage.getItem("scorerData") || "null");
@@ -280,7 +294,6 @@ function setStatusBar(state,text){ const sb=document.getElementById('statusBar')
 async function api(params){ const qs = new URLSearchParams(params).toString(); const res = await fetch(API + '?' + qs); if(!res.ok) throw new Error('HTTP '+res.status); return res.json(); }
 function updateSlider(v){ const el=document.getElementById('scoreDisplay'); if(el){ el.textContent=v; el.style.color=(v/20)>.65?'#1a6640':(v/20)>.35?'#7a5a10':'#c8410a'; } }
 
-// ════════ SCORER FONKSİYONLARI ════════
 function initScorer(){ 
   if(myScorerData && myScorerData.name){ 
     document.getElementById('scorerLoginScreen').style.display='none'; 
@@ -387,9 +400,14 @@ async function submitScores(){
   if (answeredItems < totalItems) { showToast("Lütfen tüm maddeleri işaretleyiniz."); return; }
 
   const s1 = tempScore1;
-  const yesCount = document.querySelectorAll('.checklist-container .radio-btn.yes.active').length;
+  let yesCount = 0;
+  let rawAnswers = []; // YENİ EK: Kullanıcının cevaplarını tutar
   
-  // FORMÜL: (Evet Sayısı / Toplam Soru Sayısı) * 20
+  document.querySelectorAll('.checklist-container .check-item').forEach(item => {
+    const isYes = item.querySelector('.radio-btn.yes').classList.contains('active');
+    if(isYes) { yesCount++; rawAnswers.push(1); } else { rawAnswers.push(0); }
+  });
+  
   const s2 = Math.round((yesCount / totalItems) * 20);
   
   const btn=document.getElementById('submitBtn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>Gönderiliyor…';
@@ -399,14 +417,14 @@ async function submitScores(){
   document.getElementById('scoringStep2').style.display='none'; document.getElementById('successMsg').style.display='block';
 
   try{
-    const data=await api({ action:'score', rater:myScorerData.name, gender:myScorerData.gender, age:myScorerData.age, gpa:myScorerData.gpa, score1:s1, score2:s2 });
+    // API çağrısına "raw" dizisini JSON olarak gönderiyoruz
+    const data=await api({ action:'score', rater:myScorerData.name, gender:myScorerData.gender, age:myScorerData.age, gpa:myScorerData.gpa, score1:s1, score2:s2, raw:JSON.stringify(rawAnswers) });
     if(data.status!=='ok' && data.status!=='duplicate'){
       scorerVoted=false; document.getElementById('scoringStep2').style.display='block'; document.getElementById('successMsg').style.display='none'; btn.disabled=false; btn.textContent='✓ Değerlendirmeyi Gönder'; showToast(data.message||"Hata.");
     }
   }catch(e){ scorerVoted=false; document.getElementById('scoringStep2').style.display='block'; document.getElementById('successMsg').style.display='none'; btn.disabled=false; btn.textContent='✓ Değerlendirmeyi Gönder'; showToast("Bağlantı hatası."); }
 }
 
-// ════════ TEACHER FONKSİYONLARI ════════
 async function loginTeacher(){
   const pass = document.getElementById('teacherPass').value.trim();
   if(!pass){showToast("Şifre giriniz!");return;}
@@ -498,7 +516,6 @@ function startTeacherPoll(){
   },3000);
 }
 
-// ════ KONTROL LİSTESİ YÖNETİMİ ════
 function renderTeacherChecklist(list) {
   const container = document.getElementById('teacherChecklistContainer');
   container.innerHTML = '';
@@ -524,7 +541,6 @@ async function saveChecklistToDB() {
   } catch(e) { showToast("Bağlantı hatası."); }
 }
 
-// ════ GEÇMİŞ YÖNETİMİ ════
 async function deleteHistory(sessionId) {
   if(!confirm("Bu oturumu silmek istediğinize emin misiniz?")) return;
   try {
@@ -541,7 +557,6 @@ async function clearAllHistory() {
   } catch(e) { showToast("Bağlantı hatası!"); }
 }
 
-// ════ RAPOR VE İNDİRME ════
 function formatTop3(top3Array) {
   if(!top3Array || top3Array.length === 0) return "En çok verilen puan: Veri Yok";
   return "En çok verilen: " + top3Array.map(t => `<b style="color:var(--ink)">${t.val}</b> (${t.count} kişi)`).join(', ');
@@ -557,11 +572,10 @@ function generateDemographics(scores) {
   return `<span><b>Kadın:</b> ${f}</span> <span><b>Erkek:</b> ${m}</span> <span><b>Ort. Yaş:</b> ${(totalAge/n).toFixed(1)}</span> <span><b>Ort. GNO:</b> ${(totalGpa/n).toFixed(2)}</span>`;
 }
 
-function renderReport(data,prefix){
+function renderReport(data, prefix) {
   const{speaker,scores,stats}=data; 
   if(prefix==='r') lastReport=data; else lastHistItem=data;
   
-  // Geriye dönük uyumluluk ve güvenlik (eski verilerde stats.s1 olmayabilir)
   const s1_mean = stats.s1 ? stats.s1.mean : (stats.mean || '-');
   const s1_std = stats.s1 ? stats.s1.std : (stats.std || '-');
   const s1_minmax = stats.s1 ? `${stats.s1.min} / ${stats.s1.max}` : '-';
@@ -572,7 +586,6 @@ function renderReport(data,prefix){
   const s2_minmax = stats.s2 ? `${stats.s2.min} / ${stats.s2.max}` : '-';
   const s2_top3 = stats.s2 ? formatTop3(stats.s2.top3) : '-';
 
-  // Değerleri Ekrana Yazdır
   document.getElementById(prefix+'Mean1').textContent = s1_mean; 
   document.getElementById(prefix+'Std1').textContent = s1_std;
   document.getElementById(prefix+'MinMax1').textContent = s1_minmax;
@@ -585,6 +598,60 @@ function renderReport(data,prefix){
   
   if(prefix==='r') { document.getElementById('reportSpeaker').textContent=speaker; document.getElementById('rCount').textContent=stats.n; document.getElementById('rDemoBox').innerHTML = generateDemographics(scores); }
   else { document.getElementById('hdDemoBox').innerHTML = generateDemographics(scores); }
+
+  // YENİ EK: Madde Bazlı İstatistiklerin İşlenmesi
+  const checklist = data.checklist || [];
+  const statsContainer = document.getElementById(prefix + 'ItemStats');
+  
+  // Sadece yeni versiyondan gelen (cevap detayları olan) veriler için tablo oluştur
+  if (checklist.length > 0 && scores.length > 0 && scores[0].raw && scores[0].raw.length > 0) {
+    let tallies = checklist.map((txt, i) => ({ text: txt, idx: i+1, yes: 0, no: 0 }));
+    
+    scores.forEach(s => {
+      if (s.raw && s.raw.length === checklist.length) {
+        s.raw.forEach((val, i) => {
+          if (val === 1) tallies[i].yes++;
+          else if (val === 0) tallies[i].no++;
+        });
+      }
+    });
+    
+    let maxYes = -1, maxNo = -1;
+    tallies.forEach(t => {
+      if (t.yes > maxYes) maxYes = t.yes;
+      if (t.no > maxNo) maxNo = t.no;
+    });
+    
+    let mostYesItems = tallies.filter(t => t.yes === maxYes && maxYes > 0).map(t => `Madde ${t.idx}`);
+    let mostNoItems = tallies.filter(t => t.no === maxNo && maxNo > 0).map(t => `Madde ${t.idx}`);
+    
+    let itemStatsHTML = `
+      <div class="item-stats-box">
+        <div class="item-stats-title">📋 Madde Bazlı İstatistikler</div>
+    `;
+    
+    tallies.forEach(t => {
+      itemStatsHTML += `
+        <div class="item-stat-row">
+          <span class="item-stat-text"><b>M${t.idx}:</b> ${t.text}</span>
+          <span class="item-stat-votes">
+            <span style="color:var(--green)">${t.yes} Evet</span> / 
+            <span style="color:var(--accent)">${t.no} Hayır</span>
+          </span>
+        </div>`;
+    });
+    
+    itemStatsHTML += `
+        <div class="item-summary-box">
+          <div class="item-summary-row"><b style="color:var(--green)">En çok EVET denilen:</b> ${mostYesItems.length > 0 ? mostYesItems.join(', ') + ` (${maxYes} kez)` : '-'}</div>
+          <div class="item-summary-row"><b style="color:var(--accent)">En çok HAYIR denilen:</b> ${mostNoItems.length > 0 ? mostNoItems.join(', ') + ` (${maxNo} kez)` : '-'}</div>
+        </div>
+      </div>
+    `;
+    statsContainer.innerHTML = itemStatsHTML;
+  } else {
+    statsContainer.innerHTML = ''; // Eski verilerde veya hata durumunda boş bırak
+  }
 
   const list=document.getElementById(prefix+'List'); list.innerHTML='';
   [...scores].sort((a,b)=>b.score1-a.score1).forEach(s=>{
@@ -600,8 +667,6 @@ function copyReport(d){
   navigator.clipboard.writeText(lines.join('\n')).then(()=>showToast("Kopyalandı!"));
 }
 
-// ════ CSV/EXCEL OLUŞTURUCU ════
-// TÜRKIYE BÖLGE AYARLARI İÇİN VİRGÜL (,) YERİNE NOKTALI VİRGÜL (;) KULLANILDI
 function createCSVContent(data) {
   let csv = "Öğrenci Adı;Puanlayıcı Ad Soyad;Cinsiyet;Yaş;GNO;Bütüncül Puan;Kontrol Listesi Puanı\n";
   data.scores.forEach(s => {
@@ -611,7 +676,6 @@ function createCSVContent(data) {
 }
 
 function triggerDownload(csvContent, fileName) {
-  // UTF-8 BOM eklenerek Excel'de karakterlerin bozulması önlenir
   const blob = new Blob(["\uFEFF"+csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -648,7 +712,6 @@ async function loadHistory(){
     allHistory = data.history;
     el.innerHTML='';
     
-    // Geçmiş veriler array index'i üzerinden yükleniyor (çökme sorununu engeller)
     allHistory.forEach((item, index)=>{
       const s1_m = item.stats.s1 ? item.stats.s1.mean : (item.stats.mean||'-');
       const s2_m = item.stats.s2 ? item.stats.s2.mean : '-';
@@ -670,7 +733,7 @@ function showHistDetail(index){
   document.getElementById('histDetailCard').style.display='block'; 
   document.getElementById('hdTitle').textContent=item.speaker; 
   document.getElementById('hdDate').textContent=item.date; 
-  renderReport({speaker:item.speaker, scores:item.scores, stats:item.stats}, 'hd'); 
+  renderReport({speaker:item.speaker, scores:item.scores, stats:item.stats, checklist: item.checklist}, 'hd'); 
   document.getElementById('histDetailCard').scrollIntoView({behavior:'smooth'});
 }
 function closeHistDetail(){ document.getElementById('histDetailCard').style.display='none'; }
@@ -680,5 +743,3 @@ if(savedPass) showTeacherPanel();
 </script>
 </body>
 </html>
-
-
